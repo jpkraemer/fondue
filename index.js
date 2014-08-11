@@ -344,13 +344,29 @@ var traceFilter = function (content, options) {
 	var processed = content;
 	var functionSources = {};
 
+	var extractFunctionIdFromComments = function function_name (node) {
+		if (Array.isArray(node.leadingComments)) {
+			var commentString = ""; 
+			for (var i = 0; i < node.leadingComments.length; i++) {
+				commentString += node.leadingComments[i].value + "\n";
+			}
+			var identifierMatches = commentString.match(/@uniqueFunctionIdentifier (\S+)$/m);
+			if (identifierMatches) {
+				return identifierMatches[1];
+			}
+		}
+
+		return undefined;
+	};
+
 	var extractTracePoints = function (content, path) {
 		var nodes = [];
 
 		try {
 			falafel({
 				source: content,
-				loc: true
+				loc: true,
+				attachComment: true
 			}, function (node) {
 
 				// save each function's original source code
@@ -364,11 +380,13 @@ var traceFilter = function (content, options) {
 						params.push({ name: param.name, start: param.loc.start, end: param.loc.end });
 					});
 
+					var nodeIdFromComments = extractFunctionIdFromComments(node);
+
 					nodes.push({
 						path: path,
 						start: node.loc.start,
 						end: node.loc.end,
-						id: makeId("function", path, node.loc),
+						id: (nodeIdFromComments === undefined) ? makeId("function", path, node.loc) : nodeIdFromComments,
 						type: "function",
 						name: concoctFunctionName(node),
 						params: params
@@ -463,6 +481,7 @@ var traceFilter = function (content, options) {
 		m = fala({
 			source: content,
 			loc: true,
+			attachComment: true,
 			sourceFilename: options.sourceFilename || options.path,
 			generatedFilename: options.generatedFilename || options.path,
 		}, function (node) {
@@ -488,6 +507,12 @@ var traceFilter = function (content, options) {
 
 			if (node.type === 'FunctionExpression' || node.type === 'FunctionDeclaration') {
 				var attrs = { nodeId: makeId('function', options.path, node.loc) };
+
+				//try to find a unique function identifier in the comments 
+				var nodeIdFromComments = extractFunctionIdFromComments(node);
+				if (nodeIdFromComments !== undefined) {
+					attrs.nodeId = nodeIdFromComments;
+				}
 
 				// convert the arguments to strings
 				var args = JSON.stringify(attrs);
