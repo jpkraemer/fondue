@@ -344,18 +344,24 @@ var traceFilter = function (content, options) {
 	var processed = content;
 	var functionSources = {};
 
-	var extractFunctionIdFromComments = function function_name (node) {
+	var extractFunctionIdFromComments = function (node) {
+		var leadingComments; 
 		if (Array.isArray(node.leadingComments)) {
+			leadingComments = node.leadingComments; 
+		} else if ((node.parent !== undefined) && (node.parent.parent !== undefined) && (node.parent.parent.leadingComments !== undefined)) {
+			leadingComments = node.parent.parent.leadingComments; 
+		} 
+
+		if (leadingComments !== undefined) {
 			var commentString = ""; 
-			for (var i = 0; i < node.leadingComments.length; i++) {
-				commentString += node.leadingComments[i].value + "\n";
+			for (var i = 0; i < leadingComments.length; i++) {
+				commentString += leadingComments[i].value + "\n";
 			}
 			var identifierMatches = commentString.match(/@uniqueFunctionIdentifier (\S+)$/m);
 			if (identifierMatches) {
 				return identifierMatches[1];
 			}
 		}
-
 		return undefined;
 	};
 
@@ -369,9 +375,12 @@ var traceFilter = function (content, options) {
 				attachComment: true
 			}, function (node) {
 
+				var nodeId = extractFunctionIdFromComments(node);
+				nodeId = (nodeId === undefined) ? makeId("function", path, node.loc) : nodeId;
+
 				// save each function's original source code
 				if (node.type === 'FunctionExpression' || node.type === 'FunctionDeclaration') {
-					functionSources[makeId('function', options.path, node.loc)] = node.source();
+					functionSources[nodeId] = node.source();
 				}
 
 				if (node.type === 'FunctionExpression' || node.type === 'FunctionDeclaration') {
@@ -380,13 +389,11 @@ var traceFilter = function (content, options) {
 						params.push({ name: param.name, start: param.loc.start, end: param.loc.end });
 					});
 
-					var nodeIdFromComments = extractFunctionIdFromComments(node);
-
 					nodes.push({
 						path: path,
 						start: node.loc.start,
 						end: node.loc.end,
-						id: (nodeIdFromComments === undefined) ? makeId("function", path, node.loc) : nodeIdFromComments,
+						id: nodeId,
 						type: "function",
 						name: concoctFunctionName(node),
 						params: params
